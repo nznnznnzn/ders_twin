@@ -59,8 +59,31 @@ class _StartPageState extends State<StartPage> {
           const SizedBox(height: 20),
           SwitchListTile(secondary: const Icon(Icons.volume_up), title: const Text('Sesli kullanım'), subtitle: const Text('Telefonu sallayınca sesli mod açılsın'), value: voiceMode, onChanged: (v) => setState(() => voiceMode = v)),
         ]))),
-      );
-  Widget _examButton(String exam, String subtitle, IconData icon) => SizedBox(width: double.infinity, child: FilledButton.tonalIcon(onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(exam: exam, voiceMode: voiceMode))), icon: Icon(icon), label: Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Column(children: [Text(exam, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), Text(subtitle)]))));
+      ));
+
+  Widget _examButton(String exam, String subtitle, IconData icon) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.tonalIcon(
+        onPressed: () => Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomePage(exam: exam, voiceMode: voiceMode),
+          ),
+        ),
+        icon: Icon(icon),
+        label: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            children: [
+              Text(exam, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(subtitle),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class HomePage extends StatefulWidget {
@@ -85,7 +108,16 @@ class _HomePageState extends State<HomePage> {
   void dispose() { shakeSubscription?.cancel(); tts.stop(); super.dispose(); }
   Future<void> _load() async { final p = await SharedPreferences.getInstance(); final list = p.getStringList(key) ?? []; setState(() => records.addAll(list.map((x) => StudyRecord.fromJson(jsonDecode(x))))); }
   Future<void> _save() async { final p = await SharedPreferences.getInstance(); await p.setStringList(key, records.map((x) => jsonEncode(x.toJson())).toList()); }
-  void _listenForShake() { shakeSubscription = accelerometerEvents.listen((e) { final force = e.x.abs() + e.y.abs() + e.z.abs(); final now = DateTime.now(); if (force > 28 && now.difference(lastShake).inSeconds > 2) { lastShake = now; _speak('Sesli kullanım açık. Analiz ekranındasın.'); } }); }
+  void _listenForShake() {
+    shakeSubscription = accelerometerEventStream().listen((e) {
+      final force = e.x.abs() + e.y.abs() + e.z.abs();
+      final now = DateTime.now();
+      if (force > 28 && now.difference(lastShake).inSeconds > 2) {
+        lastShake = now;
+        _speak('Sesli kullanım açık. Analiz ekranındasın.');
+      }
+    });
+  }
   Future<void> _speak(String text) async { await tts.setLanguage('tr-TR'); await tts.setSpeechRate(.46); await tts.speak(text); }
   int get total => records.fold(0, (s, r) => s + r.totalMinutes);
   int get solved => records.fold(0, (s, r) => s + r.solvedQuestions);
@@ -114,7 +146,45 @@ class _RecordFormState extends State<RecordForm> {
   @override void initState() { super.initState(); subject = widget.subjects.first; }
   @override void dispose() { for (final c in [topic, question, planned, solved, sleep, distraction, note]) { c.dispose(); } super.dispose(); }
   int n(TextEditingController c) => int.tryParse(c.text.trim()) ?? 0; double d(TextEditingController c) => double.tryParse(c.text.replaceAll(',', '.').trim()) ?? 0;
-  @override Widget build(BuildContext context) => SafeArea(child: Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).viewInsets.bottom + 12), child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Text('${widget.exam} çalışma kaydı', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 12), DropdownButtonFormField(value: subject, decoration: const InputDecoration(labelText: 'Ders', border: OutlineInputBorder()), items: widget.subjects.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(), onChanged: (v) => setState(() => subject = v!)), ListTile(title: const Text('Tarih'), subtitle: Text('${date.day}.${date.month}.${date.year}'), trailing: TextButton(onPressed: _pickDate, child: const Text('Değiştir'))), _field(topic, 'Konu çalışma süresi (dk)'), _field(question, 'Soru çözme süresi (dk)'), _field(planned, 'Planlanan soru sayısı'), _field(solved, 'Çözülen soru sayısı'), _field(sleep, 'Uyku süresi (saat)', decimal: true), _rating('Enerji', energy, (v) => setState(() => energy = v)), _rating('Konu anlama', understanding, (v) => setState(() => understanding = v)), _field(distraction, 'Dikkat dağılma süresi (dk)'), _field(note, 'Not', lines: 2), const SizedBox(height: 8), FilledButton.icon(onPressed: _submit, icon: const Icon(Icons.save), label: const Text('Kaydet'))])));
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).viewInsets.bottom + 12),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('${widget.exam} çalışma kaydı', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: subject,
+                decoration: const InputDecoration(labelText: 'Ders', border: OutlineInputBorder()),
+                items: widget.subjects.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                onChanged: (v) => setState(() => subject = v!),
+              ),
+              ListTile(
+                title: const Text('Tarih'),
+                subtitle: Text('${date.day}.${date.month}.${date.year}'),
+                trailing: TextButton(onPressed: _pickDate, child: const Text('Değiştir')),
+              ),
+              _field(topic, 'Konu çalışma süresi (dk)'),
+              _field(question, 'Soru çözme süresi (dk)'),
+              _field(planned, 'Planlanan soru sayısı'),
+              _field(solved, 'Çözülen soru sayısı'),
+              _field(sleep, 'Uyku süresi (saat)', decimal: true),
+              _rating('Enerji', energy, (v) => setState(() => energy = v)),
+              _rating('Konu anlama', understanding, (v) => setState(() => understanding = v)),
+              _field(distraction, 'Dikkat dağılma süresi (dk)'),
+              _field(note, 'Not', lines: 2),
+              const SizedBox(height: 8),
+              FilledButton.icon(onPressed: _submit, icon: const Icon(Icons.save), label: const Text('Kaydet')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
   Widget _field(TextEditingController c, String label, {bool decimal = false, int lines = 1}) => Padding(padding: const EdgeInsets.only(bottom: 10), child: TextField(controller: c, maxLines: lines, keyboardType: decimal ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.number, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())));
   Widget _rating(String label, int value, ValueChanged<int> onChanged) => Row(children: [Expanded(child: Text('$label: $value/5')), for (var i = 1; i <= 5; i++) IconButton(onPressed: () => onChanged(i), icon: Icon(i <= value ? Icons.star : Icons.star_border, color: Colors.amber))]);
   Future<void> _pickDate() async { final p = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(2035), initialDate: date); if (p != null) setState(() => date = p); }
